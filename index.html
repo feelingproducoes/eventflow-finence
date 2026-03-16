@@ -55,8 +55,11 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#162706 100%);display:flex!important">
   <div class="w-full max-w-sm mx-4">
     <div class="text-center mb-8">
-      <div class="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-xl mb-4" style="background:#8fa84a">
-        <i class="fas fa-music text-white"></i>
+      <div class="mx-auto mb-4 flex items-center justify-center">
+        <img id="login-logo" src="" alt="Feeling Produções" class="h-20 w-auto drop-shadow-xl rounded-xl" onerror="this.style.display='none';document.getElementById('login-logo-fallback').style.display='flex'">
+        <div id="login-logo-fallback" class="w-16 h-16 rounded-2xl hidden items-center justify-center text-2xl shadow-xl" style="background:#8fa84a">
+          <i class="fas fa-music text-white"></i>
+        </div>
       </div>
       <h1 class="text-2xl font-bold text-white">Feeling Produções</h1>
       <p class="text-slate-400 text-sm mt-1">Gestão de Eventos &amp; Produção</p>
@@ -217,9 +220,9 @@ let _th = [], _tr = []; // temp hotels/restaurants for logistics form
 // MULTI-USER AUTH
 // ============================================================
 const USERS = [
-  {id:'admin', nome:'Administrador', email:'admin@feeling.com', pass:'feeling@2025', role:'admin'},
-  {id:'user1', nome:'Produtor 1',    email:'produtor1@feeling.com', pass:'prod1@2025',   role:'user'},
-  {id:'user2', nome:'Produtor 2',    email:'produtor2@feeling.com', pass:'prod2@2025',   role:'user'}
+  {id:'admin', nome:'Administrador',    email:'admin@feeling.com',           pass:'feeling@2025', role:'admin'},
+  {id:'user1', nome:'Rafael Alves',     email:'feelingproducoes@gmail.com',  pass:'Feeling0579',  role:'user'},
+  {id:'user2', nome:'Jonathan Silveira',email:'jonathansilveirala@gmail.com',pass:'Feeling0579',  role:'user'}
 ];
 
 function getSession(){return JSON.parse(localStorage.getItem('ef_session')||'null');}
@@ -266,6 +269,14 @@ function togglePassVis(){
   const eye=document.getElementById('pass-eye');
   if(inp.type==='password'){inp.type='text';eye.className='fas fa-eye-slash text-sm';}
   else{inp.type='password';eye.className='fas fa-eye text-sm';}
+}
+
+function applyLoginLogo(){
+  const img=document.getElementById('login-logo');
+  if(img&&SAMPLE.company&&SAMPLE.company.logo){
+    img.src=SAMPLE.company.logo;
+    img.style.display='block';
+  }
 }
 
 function doLogin(){
@@ -1360,6 +1371,7 @@ function toast(msg){const t=document.getElementById('toast');document.getElement
 // INIT
 // ============================================================
 (function(){
+  applyLoginLogo();
   const u=getSession();
   if(!u){
     document.getElementById('login-screen').style.display='flex';
