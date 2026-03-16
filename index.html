@@ -8,6 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -136,7 +137,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <!-- MAIN -->
 <main class="flex-1 flex flex-col overflow-hidden">
   <!-- Mobile top bar -->
-  <div class="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-20">
+  <div class="lg:hidden flex items-center justify-between px-4 bg-white border-b border-slate-100 sticky top-0 z-20" style="padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-bottom:12px">
     <div class="flex items-center gap-2.5">
       <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs text-white" style="background:#8fa84a"><i class="fas fa-music"></i></div>
       <span id="mobile-title" class="font-bold text-slate-800 text-base">Dashboard</span>
@@ -221,6 +222,41 @@ const USERS = [
   {id:'user1', nome:'Rafael Alves',     email:'feelingproducoes@gmail.com',  pass:'Feeling0579',  role:'user'},
   {id:'user2', nome:'Jonathan Silveira',email:'jonathansilveirala@gmail.com',pass:'Feeling0579',  role:'user'}
 ];
+
+// ============================================================
+// SUPABASE CLOUD SYNC
+// ============================================================
+const SB_URL = 'https://rfwdouplffywijxshoax.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmd2RvdXBsZmZ5d2lqeHNob2F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODU2OTEsImV4cCI6MjA4ODc2MTY5MX0.KaO9eAQiqNZ15mfP9z9hc2G7X7ja5dKd1ml0Z8b1WHg';
+const SB_APP_ID = 'feeling_main';
+let sbClient = null;
+
+function initSupabase(){
+  try{
+    if(typeof supabase !== 'undefined' && supabase.createClient){
+      sbClient = supabase.createClient(SB_URL, SB_KEY);
+    }
+  }catch(e){ console.warn('Supabase init failed:', e); }
+}
+
+async function loadFromCloud(){
+  if(!sbClient) return null;
+  try{
+    const {data, error} = await sbClient.from('feeling_app_data')
+      .select('payload').eq('app_id', SB_APP_ID).maybeSingle();
+    if(error) throw error;
+    return data ? data.payload : null;
+  }catch(e){ console.warn('Cloud load failed:', e); return null; }
+}
+
+async function saveToCloud(){
+  if(!sbClient) return;
+  try{
+    await sbClient.from('feeling_app_data')
+      .upsert({app_id: SB_APP_ID, payload: S, updated_at: new Date().toISOString()},
+              {onConflict: 'app_id'});
+  }catch(e){ console.warn('Cloud save failed:', e); }
+}
 
 function getSession(){return JSON.parse(localStorage.getItem('ef_session')||'null');}
 function setSession(u){localStorage.setItem('ef_session',JSON.stringify(u));}
@@ -362,36 +398,52 @@ const SAMPLE = {
 // ============================================================
 // INIT & SAVE
 // ============================================================
-function init(){
+async function init(){
   const u=currentUser();
   if(!u){document.getElementById('login-screen').style.display='flex';return;}
-  const s = localStorage.getItem('ef_v3');
-  if(s){
+
+  // Tenta carregar da nuvem primeiro; fallback para localStorage
+  let loaded = false;
+  const cloudData = await loadFromCloud();
+  if(cloudData){
     try{
-      S=JSON.parse(s);
-      // Migrate legacy flat events/logistics arrays to per-user objects
-      if(Array.isArray(S.events)){
-        const legacy=S.events;
-        S.events={user1:legacy,user2:[]};
-      }
-      if(!S.events) S.events={user1:[],user2:[]};
-      if(!S.events.user1) S.events.user1=[];
-      if(!S.events.user2) S.events.user2=[];
-      if(Array.isArray(S.logistics)){
-        const legacy=S.logistics;
-        S.logistics={user1:legacy,user2:[]};
-      }
-      if(!S.logistics) S.logistics={user1:[],user2:[]};
-      if(!S.logistics.user1) S.logistics.user1=[];
-      if(!S.logistics.user2) S.logistics.user2=[];
-      save();
-    }catch(e){S=buildFreshSample();save();}
-  } else {
-    S=buildFreshSample();save();
+      S = cloudData;
+      migrateState();
+      loaded = true;
+    }catch(e){ console.warn('Cloud data parse error:', e); }
   }
+
+  if(!loaded){
+    const s = localStorage.getItem('ef_v3');
+    if(s){
+      try{ S=JSON.parse(s); migrateState(); }
+      catch(e){ S=buildFreshSample(); }
+    } else {
+      S=buildFreshSample();
+    }
+  }
+
+  save(); // persiste localmente e sobe para nuvem se precisar
   updateSidebarCompany();
   updateSidebarUser();
   navigate('dashboard');
+}
+
+function migrateState(){
+  if(Array.isArray(S.events)){
+    const legacy=S.events;
+    S.events={user1:legacy,user2:[]};
+  }
+  if(!S.events) S.events={user1:[],user2:[]};
+  if(!S.events.user1) S.events.user1=[];
+  if(!S.events.user2) S.events.user2=[];
+  if(Array.isArray(S.logistics)){
+    const legacy=S.logistics;
+    S.logistics={user1:legacy,user2:[]};
+  }
+  if(!S.logistics) S.logistics={user1:[],user2:[]};
+  if(!S.logistics.user1) S.logistics.user1=[];
+  if(!S.logistics.user2) S.logistics.user2=[];
 }
 
 function buildFreshSample(){
@@ -401,7 +453,10 @@ function buildFreshSample(){
   base.logistics={user1:SAMPLE.logistics||[],user2:[]};
   return base;
 }
-function save(){localStorage.setItem('ef_v3',JSON.stringify(S));}
+function save(){
+  localStorage.setItem('ef_v3',JSON.stringify(S));
+  saveToCloud(); // async fire-and-forget
+}
 function resetData(){if(!confirm('Restaurar dados de exemplo?'))return;S=buildFreshSample();save();updateSidebarCompany();navigate('dashboard');toast('Dados restaurados');}
 
 function updateSidebarCompany(){
@@ -1369,14 +1424,15 @@ function toast(msg){const t=document.getElementById('toast');document.getElement
 // ============================================================
 // INIT
 // ============================================================
-(function(){
+(async function(){
+  initSupabase();
   applyLoginLogo();
   const u=getSession();
   if(!u){
     document.getElementById('login-screen').style.display='flex';
   } else {
     document.getElementById('login-screen').style.display='none';
-    init();
+    await init();
   }
 })();
 </script>
